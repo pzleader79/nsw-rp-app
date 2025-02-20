@@ -1,0 +1,165 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ERLC Server Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8">ERLC Server Manager</h1>
+        
+        <!-- Server Status -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Server Status</h2>
+            <div id="serverStatus" class="space-y-2">Loading...</div>
+        </div>
+
+        <!-- Players List -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Current Players</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full table-auto">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-4 py-2 text-left">Player</th>
+                            <th class="px-4 py-2 text-left">Team</th>
+                            <th class="px-4 py-2 text-left">Permission</th>
+                            <th class="px-4 py-2 text-left">Callsign</th>
+                            <th class="px-4 py-2 text-left">Vehicle</th>
+                            <th class="px-4 py-2 text-left">Vehicle Livery</th>
+                        </tr>
+                    </thead>
+                    <tbody id="playersList">
+                        <tr><td colspan="6" class="px-4 py-2">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Join Logs -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Recent Join Logs</h2>
+            <div id="joinLogs" class="space-y-2">Loading...</div>
+        </div>
+
+        <!-- Command Interface -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Send Command</h2>
+            <div class="flex gap-4">
+                <input type="text" id="commandInput" 
+                       class="flex-1 border rounded px-3 py-2" 
+                       placeholder="Enter command (e.g., :h Hello)">
+                <button onclick="sendCommand()" 
+                        class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Send
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function updateServerStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                if (!data) {
+                    document.getElementById('serverStatus').innerHTML = 'Unable to fetch server status';
+                    return;
+                }
+                const statusHtml = `
+                    <p><strong>Server Name:</strong> ${data.Name}</p>
+                    <p><strong>Players:</strong> ${data.CurrentPlayers}/${data.MaxPlayers}</p>
+                    <p><strong>Join Key:</strong> ${data.JoinKey}</p>
+                    <p><strong>Account Verification:</strong> ${data.AccVerifiedReq}</p>
+                    <p><strong>Team Balance:</strong> ${data.TeamBalance ? 'Enabled' : 'Disabled'}</p>
+                `;
+                document.getElementById('serverStatus').innerHTML = statusHtml;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('serverStatus').innerHTML = 'Error fetching server status';
+            }
+        }
+
+        async function updatePlayers() {
+            try {
+                const response = await fetch('/api/players');
+                const players = await response.json();
+                const playersHtml = players.map(player => `
+                    <tr class="border-b">
+                        <td class="px-4 py-2">${player.Player}</td>
+                        <td class="px-4 py-2">${player.Team}</td>
+                        <td class="px-4 py-2">${player.Permission}</td>
+                        <td class="px-4 py-2">${player.Callsign || '-'}</td>
+                        <td class="px-4 py-2">${player.vehicle ? player.vehicle.name : '-'}</td>
+                        <td class="px-4 py-2">${player.vehicle ? player.vehicle.texture : '-'}</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="6" class="px-4 py-2">No players online</td></tr>';
+                document.getElementById('playersList').innerHTML = playersHtml;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('playersList').innerHTML = 
+                    '<tr><td colspan="6" class="px-4 py-2">Error fetching players</td></tr>';
+            }
+        }
+
+        async function updateJoinLogs() {
+            try {
+                const response = await fetch('/api/joinlogs');
+                const logs = await response.json();
+                const logsHtml = logs.map(log => `
+                    <div class="border-b py-2">
+                        <p>
+                            <strong>${log.Player}</strong> 
+                            ${log.Join ? 'joined' : 'left'} at 
+                            ${new Date(log.Timestamp * 1000).toLocaleString()}
+                        </p>
+                    </div>
+                `).join('') || 'No recent join logs';
+                document.getElementById('joinLogs').innerHTML = logsHtml;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('joinLogs').innerHTML = 'Error fetching join logs';
+            }
+        }
+
+        async function sendCommand() {
+            const commandInput = document.getElementById('commandInput');
+            const command = commandInput.value.trim();
+            
+            if (!command) return;
+
+            try {
+                const response = await fetch('/api/command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    commandInput.value = '';
+                    alert('Command sent successfully!');
+                } else {
+                    alert('Failed to send command');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error sending command');
+            }
+        }
+
+        // Update data every 30 seconds
+        updateServerStatus();
+        updatePlayers();
+        updateJoinLogs();
+        setInterval(() => {
+            updateServerStatus();
+            updatePlayers();
+            updateJoinLogs();
+        }, 30000);
+    </script>
+</body>
+</html>
